@@ -1,0 +1,25 @@
+# Data
+*.mat
+*.csv
+*.Rdata
+
+# Output
+*.pdf
+*.html
+*.png
+
+# Others
+*~
+.dropbox.attr
+\#*#
+.Rhistory
+
+# Logs
+*.log
+*.e*
+*.o*
+
+# Programatically created functions
+matlab/functions/t_distribution.m
+matlab/functions/d_t_distribution.m
+matlab/functions/dd_t_distribution.m

@@ -1,0 +1,308 @@
+---
+title: "Triage Analysis"
+output: html_document
+---
+
+The code below organizes the data and generates a few necessary variables.
+
+
+```{r}
+# Load Triage Data
+load("./data/upstream-inputs/triage-dataset-non-sensitive.Rdata")
+
+# Libraries
+library(stargazer)
+
+# Output some constants
+# Function to save constants
+save_constant <- function(x, file_name) {
+  write(x, file = paste0("./output/constants/", file_name, ".txt"))
+}
+
+# triage-n-observations
+save_constant(nrow(triage_dataset_non_sensitive), "triage-n-observations")
+# triage-n-implemented
+x <-
+  equals(triage_dataset_non_sensitive$phase_2_decision, "Approved") %>%
+  sum(na.rm = TRUE)
+save_constant(x, "triage-n-implemented")
+
+# Some data cleaning
+triage_dataset_non_sensitive$phase_2_decision <- NULL
+# Convert online metric deltas from fraction to percent
+triage_dataset_non_sensitive %<>% mutate(
+  `delta session success rate` = 100 * `delta session success rate`,
+  `delta sessions per unique user` = 100 * `delta sessions per unique user`,
+  `delta time to success` = 100 * `delta time to success`
+)
+
+# Simplify names
+names(triage_dataset_non_sensitive) <- gsub("phase_1_sbs_do", "off1", names(triage_dataset_non_sensitive))
+names(triage_dataset_non_sensitive) <- gsub("phase_1_sbs_dt", "off2", names(triage_dataset_non_sensitive))
+names(triage_dataset_non_sensitive) <- gsub("phase_1_xdcg_do", "off3", names(triage_dataset_non_sensitive))
+names(triage_dataset_non_sensitive) <- gsub("phase_1_xdcg_dt", "off4", names(triage_dataset_non_sensitive))
+
+names(triage_dataset_non_sensitive) <- gsub("delta sessions per unique user", "on1", names(triage_dataset_non_sensitive))
+names(triage_dataset_non_sensitive) <- gsub("delta session success rate", "on2", names(triage_dataset_non_sensitive))
+names(triage_dataset_non_sensitive) <- gsub("delta time to success", "on3", names(triage_dataset_non_sensitive))
+names(triage_dataset_non_sensitive) <- gsub("p-value sessions per unique user", "on1_pv", names(triage_dataset_non_sensitive))
+names(triage_dataset_non_sensitive) <- gsub("p-value session success rate", "on2_pv", names(triage_dataset_non_sensitive))
+names(triage_dataset_non_sensitive) <- gsub("p-value time to success", "on3_pv", names(triage_dataset_non_sensitive))
+
+triage_dataset_non_sensitive$phase_1_decision[triage_dataset_non_sensitive$phase_1_decision == "Return to Phase 1"] <- "Return"
+triage_dataset_non_sensitive$phase_1_decision[is.na(triage_dataset_non_sensitive$phase_1_decision)] <- "Success"
+
+# Create t-stats and standard deviations each offline metric
+for(i in 1:4){
+  met <- paste("off",i,sep="")
+  pv <- paste(met,"_p_value",sep="")
+  t <- paste(met,"_t",sep="")
+  std <- paste(met,"_std",sep="")
+  nn <- paste(met,"_n",sep="")
+  y <- data.matrix(triage_dataset_non_sensitive[ , c(met)])
+  y_pv <- data.matrix(triage_dataset_non_sensitive[ , c(pv)])
+  y_n <- data.matrix(triage_dataset_non_sensitive[ , c(nn)])
+  y_t <- data.matrix(qnorm(1-(y_pv/2))*((y > 0) - (y < 0)))
+  triage_dataset_non_sensitive[ , c(t)] <- data.frame(y_t)
+  triage_dataset_non_sensitive[ , c(std)] <- data.frame((sqrt(y_n)*y)/y_t)
+}
+
+# Create minimum across t-stats of offline metrics 
+triage_dataset_non_sensitive <- transform(triage_dataset_non_sensitive, minoff = pmin(triage_dataset_non_sensitive$off1_t, triage_dataset_non_sensitive$off2_t, triage_dataset_non_sensitive$off3_t, triage_dataset_non_sensitive$off4_t))
+
+# Create mean across t-stats of offline metrics 
+triage_dataset_non_sensitive$meanoff <- rowMeans(triage_dataset_non_sensitive[,c("off1_t", "off2_t", "off3_t", "off4_t")], na.rm = FALSE)
+
+```
+
+
+##Offline Analysis
+
+First, I plot the histogram of the t-statistic of the offline metrics to show that unsuccesful experiments are not kept in the dataset. 
+
+```{r}
+
+# Gen Histogram data
+
+hdata <- rbind( 
+  data.frame(V1 = triage_dataset_non_sensitive[,c("off1_t")], type = "All"), 
+  data.frame(V1 = triage_dataset_non_sensitive$off1_t[triage_dataset_non_sensitive$phase_1_decision == "Success"], type = "Success")
+)
+
+hdata[, c("met")] <- "#1" 
+
+
+for(i in 2:4){
+  met <- paste("off",i,sep="")
+  name <- paste("#",i,sep="")
+  t <- paste(met,"_t",sep="")
+  y <- triage_dataset_non_sensitive[,c(t)]
+  
+  aux <- rbind( 
+    data.frame(V1 = y, type = "All"), 
+    data.frame(V1 = y[triage_dataset_non_sensitive$phase_1_decision == "Success"], type = "Success")
+  )
+  
+  aux[, c("met")] <- name 
+  
+  j <- i + 1
+  
+  hdata <- rbind(hdata,aux)
+  
+  rm(aux)
+  
+}
+
+# Gen Simple Histogram
+
+pp <- ggplot(hdata,aes(x=V1)) + 
+  geom_histogram(dat=subset(hdata,type == "All"),aes(fill=type), col=I("black"), alpha = 0.6, bins = 8) +
+  labs(title="T-Stats Offline Metrics", x="t-stat") +
+  xlim(c(-4,4)) +
+  ylim(c(0,10)) + facet_wrap( ~ met, ncol=2)
+ggsave(file = "./output/figures/histogram-off.pdf", pp)
+pp
+
+# Gen Simple Histogram, pooled metrics (goes in the paper)
+pp <- ggplot(hdata,aes(x=V1)) + 
+  geom_histogram(dat=subset(hdata,type == "All"), bins = 8) +
+  labs(x="t-stat") +
+  xlim(c(-4,4))
+ggsave(file = "./output/figures/histogram-pooled-offline-metrics.pdf", pp)
+pp
+
+# Overlapped Histograms
+qq <- ggplot(hdata,aes(x=V1)) + 
+  geom_histogram(dat=subset(hdata,type == "All"),aes(fill=type), col=I("black"), alpha = 0.6, bins = 8) +
+  geom_histogram(dat=subset(hdata,type == "Success"),aes(fill=type), alpha = 0.8, bins = 8) +
+  labs(title="T-Stats Offline Metrics", x="t-stat") +
+  scale_fill_manual(name="", values=c("white","blue"),labels=c("All","Success")) +
+  xlim(c(-4,4)) +
+  ylim(c(0,10)) + facet_wrap( ~ met, ncol=2)
+ggsave(file = "./output/figures/histogram-offcombined.pdf", qq)
+qq
+
+# Overlapped Histogram of all metrics together
+qq <- ggplot(hdata,aes(x=V1)) + 
+  geom_histogram(dat=subset(hdata,type == "All"),aes(fill=type), col=I("black"), alpha = 0.6, bins = 8) +
+  geom_histogram(dat=subset(hdata,type == "Success"),aes(fill=type), alpha = 0.8, bins = 8) +
+  labs(title="Pooled T-Stats Offline Metrics", x="t-stat") +
+  scale_fill_manual(name="", values=c("white","blue"),labels=c("All","Success")) +
+  xlim(c(-4,4))
+ggsave(file = "./output/figures/histogram-pooloff.pdf", qq)
+qq
+
+# Overlapped Histogram of the minimum value of the metric
+
+mindata <- rbind( 
+  data.frame(V1 = triage_dataset_non_sensitive[,c("minoff")], type = "All"), 
+  data.frame(V1 = triage_dataset_non_sensitive$minoff[triage_dataset_non_sensitive$phase_1_decision == "Success"], type = "Success")
+)
+
+ww <- ggplot(mindata,aes(x=V1)) + 
+  geom_histogram(dat=subset(mindata,type == "All"),aes(fill=type), col=I("black"), alpha = 0.6, bins = 12) +
+  geom_histogram(dat=subset(mindata,type == "Success"),aes(fill=type), alpha = 0.8, bins = 12) +
+  labs(title="Minimum T-Stat Across Offline Metrics", x="t-stat") +
+  scale_fill_manual(name="", values=c("white","blue"),labels=c("All","Success")) +
+  xlim(c(-4,4)) +
+  ylim(c(0,10))
+ggsave(file = "./output/figures/histogram-offmin.pdf", ww)
+ww
+
+```
+
+Second, I plot the t-stats of the offline metrics to check if they are correlated
+
+```{r}
+
+# Create and export scatter plots of t-stats of offline metrics
+
+s1 <- ggplot(triage_dataset_non_sensitive, aes(x=off1_t, y=off2_t)) + geom_point(size=2, color = "black", fill = "black",shape=19, alpha = 0.8) + labs(x="Metric #1", y = "Metric #2")
+s2 <- ggplot(triage_dataset_non_sensitive, aes(x=off1_t, y=off3_t)) + geom_point(size=2, color = "black", fill = "black",shape=19, alpha = 0.8) + labs(x="Metric #1", y = "Metric #3")
+s3 <- ggplot(triage_dataset_non_sensitive, aes(x=off1_t, y=off4_t)) + geom_point(size=2, color = "black", fill = "black",shape=19, alpha = 0.8) + labs(x="Metric #1", y = "Metric #4")
+s4 <- ggplot(triage_dataset_non_sensitive, aes(x=off2_t, y=off3_t)) + geom_point(size=2, color = "black", fill = "black",shape=19, alpha = 0.8) + labs(x="Metric #2", y = "Metric #3")
+s5 <- ggplot(triage_dataset_non_sensitive, aes(x=off2_t, y=off4_t)) + geom_point(size=2, color = "black", fill = "black",shape=19, alpha = 0.8) + labs(x="Metric #2", y = "Metric #4")
+s6 <- ggplot(triage_dataset_non_sensitive, aes(x=off3_t, y=off4_t)) + geom_point(size=2, color = "black", fill = "black",shape=19, alpha = 0.8) + labs(x="Metric #3", y = "Metric #4")
+
+ss <- grid.arrange(s1, s2, s3, s4, ncol=2, nrow = 2)
+ss
+ggsave("./output/figures/soff-simple.pdf", ss)
+ss <- grid.arrange(s1, s2, s3, s4, s5, s6, ncol=3, nrow = 2)
+ss
+ggsave("./output/figures/offline-metrics-scatter-matrix.pdf", ss)
+
+```
+
+I complement this with a correlation matrix of the offline metrics t-stats
+
+```{r}
+
+# Correlation between offline metrics 
+
+cor(triage_dataset_non_sensitive[,c("off1","off2","off3","off4")], use = "complete.obs")
+
+```
+
+##Online - Offline Analysis
+
+In this section I explore the relation between the offline metrics and the SSR. First, I do a scatter plot of the SSR as a function of the offline metrics.
+
+```{r}
+
+### Offline & Online Analysis ###
+  
+# Scatter plot of offline and SSR (this is the only figure we will have in the paper. The rest put in the appendix)
+
+s1 <- ggplot(triage_dataset_non_sensitive, aes(x=off1_t, y=on2)) + geom_point(size=2, color = "black", fill = "black",shape=19, alpha = 0.8) + labs(x="Offline metric #1", y = "Delta in success rate") +
+  theme_bw()
+s2 <- ggplot(triage_dataset_non_sensitive, aes(x=off2_t, y=on2)) + geom_point(size=2, color = "black", fill = "black",shape=19, alpha = 0.8) + labs(x="Offline metric #2", y = "Delta in success rate") +
+  theme_bw()
+s3 <- ggplot(triage_dataset_non_sensitive, aes(x=off3_t, y=on2)) + geom_point(size=2, color = "black", fill = "black",shape=19, alpha = 0.8) + labs(x="Offline metric #3", y = "Delta in success rate") +
+  theme_bw()
+s4 <- ggplot(triage_dataset_non_sensitive, aes(x=off4_t, y=on2)) + geom_point(size=2, color = "black", fill = "black",shape=19, alpha = 0.8) + labs(x="Offline metric #4", y = "Delta in success rate") +
+  theme_bw()
+
+ss <- grid.arrange(s1, s2, s3, s4, ncol=2, nrow = 2)
+ss
+ggsave("./output/figures/ssr-vs-offline-metrics.pdf", ss)
+
+# Regression table
+df <- triage_dataset_non_sensitive %>%
+  transmute(`Delta in success rate` = on2,
+            `offline metric 1` = off1_t,
+            `offline metric 2` = off2_t,
+            `offline metric 3` = off3_t,
+            `offline metric 4` = off4_t)
+
+lm(`Delta in success rate` ~ ., data = df) %>%
+  stargazer(out = "./output/tables/ssr-vs-offline-regression.tex",
+            float = FALSE,
+            dep.var.labels   = "Measured Delta in success rate",
+            covariate.labels = c("Offline metric 1", "Offline metric 2",
+                                 "Offline metric 3", "Offline metric 4"))
+
+```
+
+Finally, I present a bar graph of the average SSR for experiments below and above a median offline metric. 
+
+```{r}
+
+# Bar graph of SSR for above and below median experiments in offline metrics
+
+
+off_med <- median(triage_dataset_non_sensitive[,c("off1_t")], na.rm  =  TRUE)
+triage_dataset_non_sensitive[ , c("off1_d")] <- (triage_dataset_non_sensitive[,c("off1_t")] > off_med)
+
+myData <- aggregate(triage_dataset_non_sensitive[,c("on2")],
+                    by = list(cyl = triage_dataset_non_sensitive[,c("off1_d")]),
+                    FUN = function(x) c(mean = mean(x, na.rm = TRUE), sd = sd(x, na.rm = TRUE),
+                                        n = length(x)))
+myData <- do.call(data.frame, myData)
+myData$se <- myData$x.sd / sqrt(myData$x.n)
+
+colnames(myData) <- c("cyl", "mean", "sd", "n", "se")
+
+myData$Group <- c("Below median","Above median")
+
+myData$met <- "Metric #1"
+
+for(i in 2:4){
+  met <- paste("off",i,sep="")
+  name <- paste("Metric #",i,sep="")
+  t <- paste(met,"_t",sep="")
+  d <- paste(met,"_d",sep="")
+  y <- triage_dataset_non_sensitive[,c(t)]
+  
+  off_med <- median(triage_dataset_non_sensitive[,c(t)], na.rm  =  TRUE)
+  triage_dataset_non_sensitive[ , c(d)] <- (triage_dataset_non_sensitive[,c(t)] > off_med)
+  
+  aux <- aggregate(triage_dataset_non_sensitive[,c("on2")],
+                      by = list(cyl = triage_dataset_non_sensitive[,c(d)]),
+                      FUN = function(x) c(mean = mean(x, na.rm = TRUE), sd = sd(x, na.rm = TRUE),
+                                          n = length(x)))
+  aux <- do.call(data.frame, aux)
+  aux$se <- aux$x.sd / sqrt(aux$x.n)
+  
+  colnames(aux) <- c("cyl", "mean", "sd", "n", "se")
+  
+  aux$Group <- c("Below median","Above median")
+  
+  aux[, c("met")] <- name 
+  
+  myData <- rbind(myData,aux)
+  
+  rm(aux)
+  
+}
+
+ss <- ggplot(myData, aes(x=met, y=mean, fill=Group)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2,
+                position=position_dodge(.9)) + labs(x="Offline metrics", y = "Measured Delta in success rate")
+
+ss
+ggsave("./output/figures/session-success-versus-offline-bar.pdf", ss)
+
+```
+
+

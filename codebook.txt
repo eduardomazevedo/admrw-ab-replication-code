@@ -1,0 +1,92 @@
+# foray-dataset-non-sensitive.Rdata
+- Contains data about experiments ran at Bing by EXP.
+- Each observation is an experiment-treatment-metric combination.
+
+Variables:
+ExperimentStepId: Unique ID for each experiment. An experiment can have multiple treatments and controls. The upstream analysis selected a single control, which is the most likely to be used (they typically unique custom control).
+BudgetArea: Which part of Bing is doing the experiment. Budget areas are areas that can be experimented in parallel. Thus, the total budget of users that can be experimented on is shared among each budget area.
+NTreatments: The number of treatments in each experiment.
+ExperimentHasTriggerFilterFlag: Whether the experiment has a trigger or filter. These are used for innovations that only affect a few searches. For example, a feature with the NFL rankings for certain searches about football. A trigger means that the innovation is only displayed in certain cases. A filter is useful for only analyzing that subset of the data, even if all users are randomized normally. In the upstream data, each row has a variable indicating whether the row was calculated using a trigger/filter. Experiments with trigger/filters appear twice, once with the overall result, and once with the result restricted to the trigger/filter sample. Our dataset does not have any results for these subsamples, because we are interested in the overall effect of each innovation. But the dataset does include experiments that have or do not have a trigger/filter somewhere. For most of the analysis we are considering experiments that do not have triggers/filters anywhere.
+FlightNameT: Unique ID for each treatment flight in each experiment.
+AnalysisStartDate
+AnalysisEndDate
+AnalysisRange: Number of days of the analysis.
+Metric: What metric is being used. See "metrics" below for an explanation.
+N: Total number of subjects, NT + NC
+NT: Number of subjects in the treatment arm.
+NC: number of subjects in the control arm.
+TrafficAllocation_T: the percentage of traffic allocated to the treatment arm.
+TrafficAllocation_C: the percentage of traffic allocated to the treatment arm.
+Delta: Percentage in-sample gain in the metric. Positive is always good. For example, is success rate is 0.70, and goes up by 0.0070, this is a 1% gain. So Delta is 1.
+t: The t statistic for a test of whether Delta moved in the experiment.
+StdErrorDelta: The standard error in measuring Delta.
+sigma: sigma is defined so that the stadard error for Delta in an experiment with N subjects, half assigned to treatment, is sigma / sqrt(N). The calculation for sigma is slightly complicated because NT is sometimes different than NC, and because the information in the upstream data is the level of the metric in the treatment, level in control, and the standard error and standard deviation of these two. So the way delta is calculated is as sqrt( 2 * (std_dev_control^2 + std_dev_treatment^2) ) * 100 / level of the metric.
+AuditResult: Michael and Surya's audit classified the experiment according to the probability that he assigns to it being legit. legit (100%), legit/maybe (75%), maybe (50%), not legit/maybe (25%), not legit 0%. Do not use this variable because it is coded with an intermediate version of the survey, done by Surya right after Michael. Some of the values have since been updated after hearing back from more experiment owners and EXP staff.
+ProbabilityLegit: This is Surya's probability. There is one detail about what to do for experiments that are actually iterations of the same idea. In that case, Surya took the probability that the idea really had the measured effect (say 75%), and split it among all iterations using his judgement. For example, if there were two iterations with a data problem, then a serious experiment, then he does 0, 0, 0.75. But if there are three iterations that all look like little variations, and all look equally reliable, he will do 0.25, 0.25, .025. The idea is that these are the correct weight for the maximum likelihood estimation.
+LinkedGroups: Some experiments are multiple iterations, versions, or tries to experiment with the same idea. These are tagged as linked groups. Each linked group has a unique id.
+Variables for offline metrics (see triage codebook below):
+phase_1_decision
+phase_2_decision
+phase_1_sbs_do
+phase_1_sbs_do_p_value
+phase_1_sbs_do_n phase_1_sbs_dt
+phase_1_sbs_dt_p_value
+phase_1_sbs_dt_n
+phase_1_xdcg_do
+phase_1_xdcg_do_p_value
+phase_1_xdcg_do_n
+phase_1_xdcg_dt
+phase_1_xdcg_dt_p_value
+phase_1_xdcg_dt_n
+
+Additional variables in `foray-dataset-with-fitted-probability`
+ProbabilityLegitFitted: This is the probability legit fitted by our LASSO model. For audited experiments, this is the probability assigned by Surya. For other observations it is the probability assigned by the LASSO model. This is never missing.
+
+
+# triage-dataset-non-sensitive.Rdata
+- This is a dataset of innovations that were tried out by the relevance team in offline tests, before going into an online test. Although this is a small sample, they keep records of things that didn't make it to online tests. So we can try to use this to figure out how good are the marginal ideas that Microsoft is developing but throwing out before taking to an online A/B test.
+- This was hand-coded by our RAs based on a OneNote document. The OneNote is kinda organized but not really, so the data collection had to largely be done by hand.
+- The problem with this dataset is that they almost never record things that didn't make it to the A/B test. So we have a bunch of innovations with offline metrics, and we can link them to the online A/B test. But the data is mostly censored by things that passed the offline tests. And also things that pass the online tests seems much more likely to make it into the data.
+- The basic criteria in the offline test is that they look at a few metrics. If the innovation has a negative statistically significant at 5% performance, then it gets cut. It is pretty clear from histograms of the t statistics in these offline metrics that this is what they are doing.
+- How does the triage work?
+- The relevance team produces ranking techniques.
+- Phase 0: An engineer (or team) has an idea, and creates all the code to implement it.
+- Phase 1: The technique is tested offline in a crowdsourcing tool. Workers compare the technique to the current page. If the engineer wants, he then submits a one page proposal to a review panel. The review panel looks at the proposal and test results. Typically they pass anything that didn't have a 5% statistically significant negative in any offline metrics.
+- Phase 2: online A/B test. Shipping criteria are often based on a proprietary combination of key metrics. For innovations that don't have tradeoffs, such as revenue versus relevance, the criteria are a lot like looking at our main key metric. See Justin's documentation and EXP's documentation in our project folder at the Microsoft Research server. These documents have detailed proprietary information on how to compare metrics and value innovations.
+
+
+
+Variables:
+- Variables that are the same as in the foray data.
+ExperimentStepId
+FlightNameT
+FlightNameC
+
+- Decision variables.
+phase_1_decision: this is whether the technique passed the first phase.
+phase_2_decision: I am not sure what this means. It could be whether the technique shipped. But I think that there are too many "approved" for that. So try not to use this variable. I will ask people in the relevance team.
+
+- Offline metrics
+- Most metrics are separated by "dt" and "do". dt means that queries are drawn from the tail of the distribution of queries, and do means that queries are drawn from the middle. The point is to make sure that certain segments are not being hurt.
+- "sbs" stadands for side-by-side. This means that the rater got the treatment and control pages side-by-side, and chose one. See Justin's document and our assets folder for a screenshot.
+- "DCG" stands for discounted cumulative gain. This summarizes how relevant the human raters though the results were, discounted in a proprietary way as you go down the page. "xDCG" is the preferred version of this measure.
+phase_1_sbs_do
+phase_1_sbs_do_p_value
+phase_1_sbs_do_n
+phase_1_sbs_dt
+phase_1_sbs_dt_p_value
+phase_1_sbs_dt_n
+phase_1_xdcg_do
+phase_1_xdcg_do_p_value
+phase_1_xdcg_do_n
+phase_1_xdcg_dt
+phase_1_xdcg_dt_p_value
+phase_1_xdcg_dt_n
+
+- Online metrics: Our RA hand-collected information from scorecards on the online performance of these guys. The reason why we hand-collected this information is that not all observations from triage could be merged with the foray dataset.
+delta sessions per unique user
+delta session success rate
+delta time to success
+p-value sessions per unique user
+p-value session success rate
+p-value time to success

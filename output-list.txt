@@ -1,0 +1,69 @@
+# MATLAB
+## Figures
+mle-weights-comparison.eps
+  comparing weighted and unweighted MLE estimates of the tail coefficients.
+  (appendix)
+model-fit-histogram.eps and model-fit-qq.eps
+  show that the data fits the benchmark model.
+posterior-mean.eps
+production-function-t.eps and production-function-normal.eps
+mle-results-mean-scale.eps and mle-results-tail.eps
+  Depicts the benchmark results for the mle
+
+## Constants
+alpha
+  benchmark estimate of alpha
+lean-gain-10
+  percent gain of trying 10 percent more ideas with the same amount of data
+lean-gain-20
+  same thing with 20 percent.
+more-data-gain-F
+  Total gain in SSR% from having 10% more data to study the 1500 or so ideas in the data.
+more-data-gain-pc
+  This gain in percent terms.
+sigma-n-typical
+  representative standard error used in counterfactuals
+  assumes the average sigma and 20 million users.
+sigma-n-typical
+  Typical standard error assuming average sigma and 20 million users. We will use this definition of typical throughout.
+outlier-delta
+  4 * typical standard error
+outlier-p
+  its posterior mean
+marginally-significant-p
+  2 * typical standard error
+marginally-significant-delta
+  its posterior mean
+typical-delta-star
+  optimal threshold for a typical experiment
+typical-t-star
+  optimal t stat threshold for a typical experiment
+cost-to-rationalize-p-value
+  cost to rationalize the p value policy in a typical experiment.
+pareto-ratio-p-value
+  gain from the top 2% ideas in a p value policy and historical data. measure in percent of total.
+historical-gain-optimal
+  total historic true gain of the optimal policy
+optimal-vs-p-value-gain
+  percent increase in total historic gain from moving to optimal implementation strategy relative to p value policy.
+alternative-alpha
+  benchmark alpha plus one
+loss-alternative-alpha
+  percent reduction in the value of an idea with infinite data from increasing alpha to alternative value
+
+## Tables
+- parameter estimates for all metrics (body)
+- parameter estimates with weights (appendix)
+
+
+# R
+## Figures
+pareto-tail-absolute-value.eps
+  Depicts the tail coefficients
+ssr-vs-offline-metrics
+  Shows that offline metrics do not predict session success rate.
+
+## Constants
+triage-n-observations
+triage-n-implemented
+  number that were approved in phase two.
